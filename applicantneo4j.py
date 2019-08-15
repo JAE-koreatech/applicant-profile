@@ -25,7 +25,7 @@ def mongodb_get_collection(db, item):
 
 def mongodb_put_doc(doc):
     db = mongodb_init()
-    col = mongodb_get_collection(db, 'Applicantprofile')
+    col = mongodb_get_collection(db, 'Clean_Applicantprofile')
 
     try:
         global docNum
@@ -41,10 +41,13 @@ def mongodb_put_doc(doc):
 def mongodb_read_docs(col):
     db = mongodb_init()
     col = mongodb_get_collection(db, col)
-
+    global LIMIT_NUMBER
+    global NUMBER
+    LIMIT_NUMBER = 1567
+    NUMBER = 0
     try:
 
-        ret = col.find()
+        ret = col.find().limit(LIMIT_NUMBER)
 
     except Exception as e:
         print(e)
@@ -54,7 +57,7 @@ def mongodb_read_docs(col):
 
 # Neo4j Functions
 def neo4j_init():
-    uri = "bolt://localhost:7687"
+    uri = "bolt://34.66.112.119:7687"
     userName = "neo4j"
     passwd = "SmartCareer0!"
     ndb = GraphDatabase.driver(uri, auth=(userName, passwd))
@@ -138,7 +141,7 @@ def merge(list1, list2, list3, list4): #job_time, edu_time, edu_list, job_list
 if "__main__":
 
     print("Starting")
-    docs = mongodb_read_docs('Applicantprofile')
+    docs = mongodb_read_docs('Clean_Applicantprofile')
     graphDB = neo4j_init()
     count = 0
     for d in docs:
@@ -165,7 +168,7 @@ if "__main__":
         period_list = []
 
         for item in experience:
-            job_list.append(item['Job Title'].replace("'", ""))
+            job_list.append(item['Job Title'].replace("'", "").replace('\\', ' '))
             job_time.append(item['Period'])
             company_list.append(item['Company'].replace("'", ""))
             location_list.append(item['Location'].replace("'", ""))
@@ -178,7 +181,7 @@ if "__main__":
         for edu in education:
             edu_time.append(edu['Date Attended'])
             edu_list.append(edu['School'].replace("'", ""))
-            edu_degree.append(edu['Degree'].replace("'", ""))
+            edu_degree.append(edu['Degree'].replace("'", "")+' MAJOR! '+edu['Major'].replace("'", ""))
 
         if len(edu_time) != 0 and len(period_list) != 0:
             try:
@@ -198,6 +201,18 @@ if "__main__":
             for element in job_n_edu_list[:-1]:
                 next_index = current_index + 1
                 #job to job
+                try:
+                    degree_major_next = job_n_deg_list[next_index][1:].split(' MAJOR! ')
+                except:
+                    degree_major_next = ['', '']
+
+
+
+                try:
+                    degree_major_current = job_n_deg_list[current_index][1:].split(' MAJOR! ')
+                except:
+                    degree_major_current = ['', '']
+
                 if element.startswith("j") and job_n_edu_list[next_index].startswith("j"):
                     jobs_to_jobs = """MERGE (c:`Job Title`{Name: '%s', Company:'%s', Location: '%s'})
                                    Merge (f:`Job Title`{Name:'%s', Company: '%s', Location: '%s'})
@@ -207,26 +222,25 @@ if "__main__":
 
                 elif element.startswith("j") and job_n_edu_list[next_index].startswith("e"):
                     edu_to_jobs = """MERGE (c:`Job Title`{Name: '%s', Company:'%s', Location: '%s'})
-                                   Merge (f:`Education`{Name:'%s', Degree: '%s'})
-                                   Merge (f)-[:SWITHCEDTO]->(c)""" % (element[1:], comp_n_edu_list[current_index][1:],loc_n_edu_list[current_index][1:],
-                                                                      job_n_edu_list[next_index][1:], job_n_deg_list[next_index][1:])
+                                   Merge (f:`Education`{Name:'%s', Degree: '%s', Major: '%s'})
+                                   Merge (f)-[:SWITHCEDTO]->(c)""" % (element[1:], comp_n_edu_list[current_index][1:], loc_n_edu_list[current_index][1:],
+                                                                      job_n_edu_list[next_index][1:], degree_major_next[0], degree_major_next[1])
                     ret = neo4j_merge(graphDB, edu_to_jobs)
 
                 elif element.startswith("e") and job_n_edu_list[next_index].startswith("j"):
-                    jobs_to_edu = """MERGE (c:`Education`{Name: '%s', Degree: '%s'})
+                    jobs_to_edu = """MERGE (c:`Education`{Name: '%s', Degree: '%s', Major: '%s'})
                                        Merge (f:`Job Title`{Name:'%s', Company: '%s', Location: '%s'})
-                                       Merge (f)-[:SWITHCEDTO]->(c)""" % (element[1:], job_n_deg_list[current_index][1:],
+                                       Merge (f)-[:SWITHCEDTO]->(c)""" % (element[1:], degree_major_current[0], degree_major_current[1],
                                                                           job_n_edu_list[next_index][1:], comp_n_edu_list[next_index][1:], loc_n_edu_list[next_index][1:])
                     ret = neo4j_merge(graphDB, jobs_to_edu)
 
                 elif element.startswith("e") and job_n_edu_list[next_index].startswith("e"):
-                    edu_to_edu = """MERGE (c:`Education`{Name: '%s', Degree: '%s'})
-                                       Merge (f:`Education`{Name:'%s', Degree: '%s'})
-                                       Merge (f)-[:SWITHCEDTO]->(c)""" % (element[1:], job_n_deg_list[current_index][1:],
-                                                                          job_n_edu_list[next_index][1:], job_n_deg_list[next_index][1:])
+                    edu_to_edu = """MERGE (c:`Education`{Name: '%s', Degree: '%s', Major: '%s'})
+                                       Merge (f:`Education`{Name:'%s', Degree: '%s', Major: '%s'})
+                                       Merge (f)-[:SWITHCEDTO]->(c)""" % (element[1:], degree_major_current[0], degree_major_current[1],
+                                                                          job_n_edu_list[next_index][1:], degree_major_next[0], degree_major_next[1])
                     ret = neo4j_merge(graphDB, edu_to_edu)
                 current_index += 1
-                print("Neo4j inserted: %s" % ret)
         except Exception as e:
             # write_log(str(e))
             print(e)
@@ -239,7 +253,6 @@ if "__main__":
                                Merge (c:`Company` {Name:'%s'})
                                Merge (j)-[:WORK_AT]->(c)""" % (job_list[index], company, company)
                 ret = neo4j_merge(graphDB, companies)
-                print("Neo4j inserted: %s" % ret)
         except Exception as e:
             # write_log(str(e))
             # print(e)
@@ -259,7 +272,6 @@ if "__main__":
                             Merge (t:`Skill` {Skill:'%s'})
                             Merge (b)-[:PARTOF]->(t)""" % (company_list[0], job_list[0], skill)
                 ret = neo4j_merge(graphDB, Skills)
-                print("Neo4j inserted: %s" % ret)
 
         except Exception as e:
             write_log(str(e))
@@ -268,21 +280,41 @@ if "__main__":
 
         try:
             for loc in location_list:
-                if loc != '':
+                try:
+                    split_loc = loc.split(', ')
+                    if len(split_loc) == 2:
+                        index = location_list.index(loc)
+                        Locations = """
+                                    MATCH (c:`Company`{Name: '%s'})
+                                    Merge (l:`Location` {City: '%s', State:'', Country: '%s'})
+                                    Merge (c)-[:LOCATED_AT]->(l)""" % (company_list[index], split_loc[0], split_loc[1])
+                        ret = neo4j_merge(graphDB, Locations)
+
+                    elif len(split_loc) >= 3:
+                        index = location_list.index(loc)
+                        Locations = """
+                                    MATCH (c:`Company`{Name: '%s'})
+                                    Merge (l:`Location` {City: '%s', State: '%s', Country: '%s'})
+                                    Merge (c)-[:LOCATED_AT]->(l)""" % (company_list[index], split_loc[0], split_loc[1], split_loc[2])
+                        ret = neo4j_merge(graphDB, Locations)
+
+                except:
                     index = location_list.index(loc)
                     Locations = """
                                 MATCH (c:`Company`{Name: '%s'})
-                                Merge (l:`Location` {Name: '%s'})
+                                Merge (l:`Location` {City: '%s', State: '', Country: ''})
                                 Merge (c)-[:LOCATED_AT]->(l)""" % (company_list[index], loc)
                     ret = neo4j_merge(graphDB, Locations)
-                    print("Neo4j inserted: %s" % ret)
+
 
         except Exception as e:
             # write_log(str(e))
             print(e)
             continue
 
+        NUMBER += 1
+        print("Neo4j inserted: %s : %4.2f%%" % (ret, (NUMBER / LIMIT_NUMBER)*100))
+
     graphDB.close()
     print("completed")
-
 
